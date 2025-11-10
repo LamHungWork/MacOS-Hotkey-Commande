@@ -12,6 +12,9 @@
 		AA0000010000000000000003 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000003 /* HotkeyManager.swift */; };
 		AA0000010000000000000004 /* ConfigurationWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000004 /* ConfigurationWindowController.swift */; };
 		AA0000010000000000000005 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000005 /* LaunchAtLoginManager.swift */; };
+		b1113f17bfae465188656fd5 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 690193efcc23411db958e24e /* AppIcon.icns */; };
+		363b5ddf757b401f86474a1c /* menubar_icon.png in Resources */ = {isa = PBXBuildFile; fileRef = ccd083c0cb504260abb03303 /* menubar_icon.png */; };
+		b8cd70bcf88642b0baf32b9d /* menubar_icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = d974b90a1a3e441d9f76c103 /* menubar_icon@2x.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +26,9 @@
 		AA0000020000000000000005 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000030000000000000002 /* HotkeyCommander.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HotkeyCommander.entitlements; sourceTree = "<group>"; };
+		690193efcc23411db958e24e /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		ccd083c0cb504260abb03303 /* menubar_icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = menubar_icon.png; sourceTree = "<group>"; };
+		d974b90a1a3e441d9f76c103 /* menubar_icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "menubar_icon@2x.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,6 +83,9 @@
 		AA0000090000000000000001 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				690193efcc23411db958e24e /* AppIcon.icns */,
+				ccd083c0cb504260abb03303 /* menubar_icon.png */,
+				d974b90a1a3e441d9f76c103 /* menubar_icon@2x.png */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -148,6 +157,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				b1113f17bfae465188656fd5 /* AppIcon.icns in Resources */,
+				363b5ddf757b401f86474a1c /* menubar_icon.png in Resources */,
+				b8cd70bcf88642b0baf32b9d /* menubar_icon@2x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

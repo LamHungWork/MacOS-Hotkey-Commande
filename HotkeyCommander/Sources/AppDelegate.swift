@@ -54,10 +54,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusBarItem.button {
-            // Use action template icon
-            let image = NSImage(named: NSImage.actionTemplateName)
-            button.image = image
-            button.image?.isTemplate = true
+            // Load custom menu bar icon
+            if let image = NSImage(named: "menubar_icon") {
+                image.isTemplate = true
+                button.image = image
+            } else {
+                // Fallback to system icon
+                let image = NSImage(named: NSImage.actionTemplateName)
+                button.image = image
+                button.image?.isTemplate = true
+            }
         }
 
         updateMenu()

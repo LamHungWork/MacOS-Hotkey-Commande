@@ -208,6 +208,8 @@ class ConfigurationWindowController: NSWindowController, NSWindowDelegate, NSTab
         commandField.placeholderString = "open -a \"Google Chrome\""
         commandField.translatesAutoresizingMaskIntoConstraints = false
         commandField.delegate = self
+        commandField.cell?.wraps = false
+        commandField.cell?.isScrollable = true
         container.addSubview(commandField)
 
         addButton = NSButton(title: "+ Add New", target: self, action: #selector(addNewShortcut))

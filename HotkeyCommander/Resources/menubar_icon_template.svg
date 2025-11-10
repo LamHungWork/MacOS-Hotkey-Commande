@@ -1,0 +1,12 @@
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Command symbol simplified for menu bar -->
+  <circle cx="5.5" cy="5.5" r="1.8" stroke="black" stroke-width="1.2" fill="none"/>
+  <circle cx="5.5" cy="16.5" r="1.8" stroke="black" stroke-width="1.2" fill="none"/>
+  <circle cx="16.5" cy="5.5" r="1.8" stroke="black" stroke-width="1.2" fill="none"/>
+  <circle cx="16.5" cy="16.5" r="1.8" stroke="black" stroke-width="1.2" fill="none"/>
+
+  <rect x="5.5" y="4" width="11" height="2" fill="none" stroke="black" stroke-width="1.2"/>
+  <rect x="4" y="5.5" width="2" height="11" fill="none" stroke="black" stroke-width="1.2"/>
+  <rect x="5.5" y="16" width="11" height="2" fill="none" stroke="black" stroke-width="1.2"/>
+  <rect x="16" y="5.5" width="2" height="11" fill="none" stroke="black" stroke-width="1.2"/>
+</svg>
