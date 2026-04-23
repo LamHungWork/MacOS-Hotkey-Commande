@@ -124,17 +124,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkAccessibilityPermissions() {
-        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        let accessEnabled = AXIsProcessTrustedWithOptions(options)
-
-        if !accessEnabled {
-            let alert = NSAlert()
-            alert.messageText = "Accessibility Permission Required"
-            alert.informativeText = "Hotkey Commander needs accessibility permissions to listen for global keyboard shortcuts. Please grant permission in System Preferences > Security & Privacy > Accessibility."
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
+        if AXIsProcessTrusted() {
+            return
         }
+
+        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        _ = AXIsProcessTrustedWithOptions(options)
+
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Permission Required"
+        alert.informativeText = "Hotkey Commander needs accessibility permissions to listen for global keyboard shortcuts. Please grant permission in System Preferences > Security & Privacy > Accessibility."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 
