@@ -193,8 +193,9 @@ final class PhoneServer {
 
     /// A touch that arrives late, after the Mac slept or the network came back, is not run.
     private func run(id: String, sentAt: String?) -> PhoneResponse {
+        let now = Self.now()
         guard content.buttonIDs.contains(id), let sentAt = sentAt.flatMap(Int64.init),
-              abs(Self.now() - sentAt) <= 3000 else {
+              (now - 3000...now + 3000).contains(sentAt) else {
             return .notFound
         }
         DispatchQueue.main.async { self.onRun?(id) }
