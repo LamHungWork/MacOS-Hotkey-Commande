@@ -8,7 +8,8 @@ A lightweight macOS menu bar application that executes shell commands using cust
 - **Auto-Start**: Automatically launches at login (can be configured)
 - **Menu Bar Icon**: Quick access via system menu bar
 - **Customizable Hotkeys**: Configure your own activation key combination (default: Control + Shift)
-- **Toggle Mode**: Commands start when you press the hotkey and stop when you release it
+- **Button Panel**: Hold the activation hotkey to see your commands as buttons on screen
+- **Phone**: Run the same buttons from a phone on your Wi-Fi
 - **Simple Configuration**: Easy-to-use settings window for managing shortcuts
 
 ## Requirements
@@ -40,7 +41,7 @@ xcodebuild -project HotkeyCommander.xcodeproj -scheme HotkeyCommander -configura
 1. Build the application using one of the methods above
 2. Copy `HotkeyCommander.app` to your `/Applications` folder
 3. Launch the application
-4. Grant accessibility permissions when prompted (required for global keyboard shortcuts)
+4. Grant accessibility permissions when prompted (required for the button panel)
 
 ### Granting Accessibility Permissions
 
@@ -63,11 +64,14 @@ On first launch, macOS will prompt you to grant accessibility permissions:
 ### Configuring Shortcuts
 
 1. Click the menu bar icon (⌨︎)
-2. Select **Configure...**
-3. In the configuration window:
-   - **Change Activation Hotkey**: Click "Change" and press your desired modifier combination
-   - **Add Shortcuts**: Enter a single key and the command to execute, then click "+ Add New"
-   - **Delete Shortcuts**: Click the × button next to any shortcut
+2. Select **Configure…**
+3. In the **Buttons** tab:
+   - **Change Activation Hotkey**: Click "Change", press your desired modifier combination, then click "OK"
+   - **Add Buttons**: Click "+", then enter a command and at least a key, a name or an icon
+   - **Edit Buttons**: Click a button in the grid
+   - **Set Icons**: Drop an image (PNG, JPG, SVG, ICNS) or an app on a button, or click the preview to choose one
+   - **Reorder Buttons**: Drag a button to its new place
+   - **Delete Buttons**: Click a button, then "Delete button"
 4. Click **Save** to apply changes
 
 ### Example Shortcuts
@@ -82,20 +86,33 @@ Here are some useful shortcuts to get started:
 | F | `open -a "Finder"` | Open Finder |
 | V | `open -a "Visual Studio Code"` | Open VS Code |
 
-### Toggle Mode
+### Button Panel
 
-Commands start when you press the hotkey combination and stop when you release it. This is useful for:
+Hold the activation hotkey to show your buttons over whatever is on screen, full-screen apps included. The app you are working in keeps the keyboard focus.
 
-- Running continuous processes
-- Opening apps (they stay open after you release the key)
-- Executing scripts that run in the background
+- Click a button to run it. The panel stays open until you release the hotkey
+- Press a button's key to run it. The panel closes at once
+- Uncheck **Show Panel** in the menu to use only the keys
+
+Commands run to their end, even after you release the keys or quit the app. Running a button again starts another run.
+
+### Phone
+
+A phone on the same Wi-Fi can show the same buttons in its browser:
+
+1. In the **Phone** tab of **Configure…**, turn on **Allow phones**
+2. Click **Add device…**, enter a name and click "OK"
+3. Scan the code with the phone's camera
+
+The link keeps working after a restart and on any network both devices share, until you click **Remove** or rename the Mac. The app listens on port 47110, on the local network only. The connection is not encrypted, so use it only on Wi-Fi you trust.
 
 ## Configuration Storage
 
-All settings are stored in `UserDefaults` under the key `HotkeyCommanderConfiguration`. To reset the app:
+All settings, including the saved phones, are stored in `UserDefaults` under the key `HotkeyCommanderConfiguration`. Icons are stored in `~/Library/Application Support/com.hotkeycommander.app/icons`. To reset the app:
 
 ```bash
 defaults delete com.hotkeycommander.app
+rm -r ~/Library/Application\ Support/com.hotkeycommander.app
 ```
 
 ## Project Structure
@@ -105,8 +122,26 @@ HotkeyCommander/
 ├── Sources/
 │   ├── AppDelegate.swift                    # Main application entry point
 │   ├── ConfigurationManager.swift           # Handles configuration storage
-│   ├── HotkeyManager.swift                  # Global hotkey listening and command execution
+│   ├── HotkeyManager.swift                  # Activation hotkey plus a button's key
+│   ├── ActivationMonitor.swift              # Notices the activation hotkey being held
+│   ├── ScriptRunner.swift                   # Runs a button's command and logs failures
+│   ├── LoginShellPath.swift                 # PATH the commands run with
+│   ├── IconStore.swift                      # The app's copies of the icons
+│   ├── AppPaths.swift                       # Where the app keeps its files
+│   ├── DeckPanelController.swift            # Button panel
+│   ├── ButtonFace.swift                     # How a button looks
 │   ├── ConfigurationWindowController.swift  # Settings window UI
+│   ├── SettingsDraft.swift                  # Edits before Save
+│   ├── ButtonGridView.swift                 # Button grid and preview in Settings
+│   ├── FieldBox.swift                       # Text fields in Settings
+│   ├── ChangeHotkeySheet.swift              # Dialog for a new activation hotkey
+│   ├── ModifierNames.swift                  # Activation hotkey as text
+│   ├── PhoneController.swift                # Phones, as the rest of the app sees them
+│   ├── PhoneServer.swift                    # Answers phones on the local network
+│   ├── PhoneConnection.swift                # One request from a phone
+│   ├── PhonePage.swift                      # The page a phone opens
+│   ├── PhoneSettingsView.swift              # Phone tab of Settings
+│   ├── AddDeviceSheet.swift                 # Dialog with the code to scan
 │   └── LaunchAtLoginManager.swift          # Auto-start functionality
 ├── Resources/
 └── Supporting Files/
@@ -118,9 +153,13 @@ HotkeyCommander/
 
 ### Hotkeys not working
 
-1. Check that accessibility permissions are granted
-2. Make sure no other app is using the same hotkey combination
-3. Try changing the activation hotkey in settings
+1. Make sure no other app is using the same hotkey combination
+2. Try changing the activation hotkey in settings
+
+### Panel not showing
+
+1. Check that accessibility permissions are granted. The hotkeys work without them, the panel does not
+2. Check that **Show Panel** is checked in the menu
 
 ### App doesn't start at login
 
@@ -132,8 +171,9 @@ The app should automatically register for launch at login. If it doesn't:
 ### Commands not executing
 
 1. Verify the command works in Terminal first
-2. Check that the command path is correct (use full paths if needed)
-3. Some commands may require additional permissions
+2. Check `~/Library/Logs/HotkeyCommander/deck.log`, where failed commands are listed with their output
+3. Check that the command is found in a new Terminal window. Commands run with that PATH, read when the app starts
+4. Some commands may require additional permissions
 
 ## Development
 
@@ -147,9 +187,13 @@ The app should automatically register for launch at login. If it doesn't:
 ### Key Components
 
 - **AppDelegate**: Main coordinator, sets up status bar and manages app lifecycle
-- **HotkeyManager**: Monitors global keyboard events and executes commands
-- **ConfigurationManager**: Persists and validates user settings
-- **ConfigurationWindowController**: Provides UI for managing shortcuts
+- **HotkeyManager**: Listens for the activation hotkey plus a button's key
+- **ActivationMonitor**: Notices when the activation hotkey is held and let go
+- **DeckPanelController**: Shows the button panel
+- **ScriptRunner**: Runs a button's command by its id, for the hotkeys, the panel and the phones
+- **PhoneServer**: Serves the phones' page and passes on their touches
+- **ConfigurationManager**: Persists user settings
+- **ConfigurationWindowController**: Provides UI for managing buttons and phones
 
 ## License
 
