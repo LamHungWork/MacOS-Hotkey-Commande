@@ -12,16 +12,23 @@ class AppMain {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarItem: NSStatusItem!
+    private let menu = NSMenu()
     var configurationWindow: ConfigurationWindowController?
     var hotkeyManager: HotkeyManager!
     var configManager: ConfigurationManager!
+    private let iconStore = IconStore()
+    private var scriptRunner: ScriptRunner!
+    private var panelController: DeckPanelController!
+    private var phoneController: PhoneController!
+    private let activationMonitor = ActivationMonitor()
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Initialize configuration manager
         configManager = ConfigurationManager()
 
-        // Initialize hotkey manager
-        hotkeyManager = HotkeyManager(configManager: configManager)
+        // Read the PATH scripts run with
+        scriptRunner = ScriptRunner(configManager: configManager)
+        scriptRunner.prepare()
 
         // Setup status bar icon BEFORE setting activation policy
         setupStatusBar()
@@ -31,14 +38,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.accessory)
         }
 
+        setupEditMenu()
+
         // Setup launch at login
         _ = LaunchAtLoginManager.shared
 
+        // Start listening for hotkeys. They need no permission, so they don't wait for the prompt below
+        startHotkeys()
+
+        // Build the panel, and show it while the Activation Hotkey is held
+        startPanel()
+
+        // Answer the phones, if they are allowed
+        phoneController = PhoneController(
+            configManager: configManager, iconStore: iconStore, scriptRunner: scriptRunner
+        )
+        phoneController.start()
+
         // Request accessibility permissions if needed
         checkAccessibilityPermissions()
-
-        // Start listening for hotkeys
-        hotkeyManager.startListening()
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
@@ -47,6 +65,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         return true
+    }
+
+    private func startHotkeys() {
+        hotkeyManager = HotkeyManager(configManager: configManager)
+        hotkeyManager.onHotkey = { [weak self] id in
+            self?.activationMonitor.hotkeyPressed()
+            self?.scriptRunner.run(id: id)
+        }
+        hotkeyManager.startListening()
+    }
+
+    private func startPanel() {
+        panelController = DeckPanelController(configManager: configManager, iconStore: iconStore)
+        panelController.onClick = { [weak self] id in
+            self?.scriptRunner.run(id: id)
+        }
+
+        activationMonitor.onHold = { [weak self] time in
+            guard let self = self, self.configManager.isPanelEnabled,
+                  self.configurationWindow?.isChangingHotkey != true else {
+                return false
+            }
+            self.panelController.show(hotkeyAt: time)
+            return true
+        }
+        activationMonitor.onEnd = { [weak self] in
+            self?.panelController.hide()
+        }
+        activationMonitor.start(modifiers: configManager.getActivationModifiers())
     }
 
     private func setupStatusBar() {
@@ -66,12 +113,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        updateMenu()
+        menu.delegate = self
+        statusBarItem.menu = menu
+    }
+
+    /// Never on screen, since the app has no menu bar of its own. It is what makes the editing keys work
+    /// in the Settings fields.
+    private func setupEditMenu() {
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        let editItem = NSMenuItem()
+        editItem.submenu = editMenu
+        let mainMenu = NSMenu()
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
     }
 
     private func updateMenu() {
-        let menu = NSMenu()
-        menu.delegate = self
+        menu.removeAllItems()
 
         // Add shortcuts list
         let shortcuts = configManager.getShortcuts()
@@ -81,8 +145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         } else {
             for shortcut in shortcuts {
-                let title = "\(shortcut.key.uppercased()) - \(shortcut.command)"
-                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                let item = NSMenuItem(title: menuTitle(of: shortcut), action: nil, keyEquivalent: "")
                 item.isEnabled = false
                 menu.addItem(item)
             }
@@ -90,8 +153,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Show Panel menu item
+        let showPanelItem = NSMenuItem(title: "Show Panel", action: #selector(togglePanel), keyEquivalent: "")
+        showPanelItem.target = self
+        showPanelItem.state = configManager.isPanelEnabled ? .on : .off
+        menu.addItem(showPanelItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         // Configure menu item
-        let configureItem = NSMenuItem(title: "Configure...", action: #selector(openConfiguration), keyEquivalent: ",")
+        let configureItem = NSMenuItem(title: "Configure…", action: #selector(openConfiguration), keyEquivalent: ",")
         configureItem.target = self
         menu.addItem(configureItem)
 
@@ -99,24 +170,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApplication), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
+    }
 
-        // Set menu
-        statusBarItem.menu = menu
+    private func menuTitle(of shortcut: ShortcutConfig) -> String {
+        return shortcut.key.isEmpty ? shortcut.displayName : "\(shortcut.key.uppercased()) - \(shortcut.command.firstLine)"
+    }
+
+    @objc private func togglePanel() {
+        configManager.setPanelEnabled(!configManager.isPanelEnabled)
+        panelController.hide()
     }
 
     @objc private func openConfiguration() {
+        // A window opened anew starts from the saved configuration
         if configurationWindow == nil {
-            configurationWindow = ConfigurationWindowController(configManager: configManager, hotkeyManager: hotkeyManager)
+            let controller = ConfigurationWindowController(
+                configManager: configManager, iconStore: iconStore, phoneController: phoneController
+            )
+            controller.onSave = { [weak self] in
+                self?.applyConfiguration()
+            }
+            controller.onClose = { [weak self] in
+                // Not during the close itself: this is the last reference to the window
+                DispatchQueue.main.async {
+                    self?.configurationWindow = nil
+                }
+            }
+            configurationWindow = controller
         }
 
         configurationWindow?.showWindow(nil)
         configurationWindow?.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
 
-        // Update menu after configuration window closes
-        configurationWindow?.onClose = { [weak self] in
-            self?.updateMenu()
-        }
+    private func applyConfiguration() {
+        hotkeyManager.reloadConfiguration()
+        activationMonitor.setModifiers(configManager.getActivationModifiers())
+        panelController.reload()
+        phoneController.reload()
     }
 
     @objc private func quitApplication() {
@@ -133,7 +225,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let alert = NSAlert()
         alert.messageText = "Accessibility Permission Required"
-        alert.informativeText = "Hotkey Commander needs accessibility permissions to listen for global keyboard shortcuts. Please grant permission in System Preferences > Security & Privacy > Accessibility."
+        alert.informativeText = "Hotkey Commander needs accessibility permissions to show the button panel. Shortcuts work without it. Please grant permission in System Preferences > Security & Privacy > Accessibility."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -142,7 +234,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - NSMenuDelegate
 extension AppDelegate: NSMenuDelegate {
-    func menuWillOpen(_ menu: NSMenu) {
+    func menuNeedsUpdate(_ menu: NSMenu) {
         // Refresh menu when it's about to open
         updateMenu()
     }

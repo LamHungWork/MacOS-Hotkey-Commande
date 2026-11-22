@@ -28,8 +28,6 @@
 	<string>Copyright © 2024. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>NSSupportsAutomaticTermination</key>
-	<true/>
 	<key>NSSupportsSuddenTermination</key>
 	<true/>
 </dict>

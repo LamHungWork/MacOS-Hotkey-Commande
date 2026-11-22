@@ -1,437 +1,507 @@
 import Cocoa
+import UniformTypeIdentifiers
 
-class ConfigurationWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
-    private var configManager: ConfigurationManager
-    private var hotkeyManager: HotkeyManager
-
-    // Temporary storage for editing
-    private var tempModifiers: [String] = []
-    private var tempShortcuts: [ShortcutConfig] = []
-
-    // UI Components
-    private var modifierButton: NSButton!
-    private var tableView: NSTableView!
-    private var keyField: NSTextField!
-    private var commandField: NSTextField!
-    private var addButton: NSButton!
-    private var saveButton: NSButton!
-    private var closeButton: NSButton!
-
+class ConfigurationWindowController: NSWindowController, NSWindowDelegate {
+    var onSave: (() -> Void)?
     var onClose: (() -> Void)?
 
-    init(configManager: ConfigurationManager, hotkeyManager: HotkeyManager) {
+    private let configManager: ConfigurationManager
+    private let iconStore: IconStore
+    private let phoneController: PhoneController
+    private let draft: SettingsDraft
+    private var selectedID: String?
+
+    // UI Components
+    private let modifierButton = NSButton(title: "", target: nil, action: nil)
+    private let saveButton = NSButton(title: "Save", target: nil, action: nil)
+    private let grid = ButtonGridView()
+    private let gridScrollView = OverlayScrollView()
+    private let preview = ButtonPreviewView()
+    private let removeIconButton = NSButton(title: "Remove icon", target: nil, action: nil)
+    private let nameField = FocusTextField()
+    private let keyField = FocusTextField()
+    private let keyEditor = KeyFieldEditor.make()
+    private let commandView: CommandTextView
+    private let commandScrollView: NSScrollView
+    private lazy var nameBox = FieldBox(field: nameField, height: 32)
+    private lazy var keyBox = FieldBox(field: keyField, height: 32)
+    private lazy var commandBox = FieldBox(content: commandScrollView, insets: NSEdgeInsets(top: 1, left: 1, bottom: 1, right: 1))
+    private let keyError = ConfigurationWindowController.errorLabel()
+    private let commandError = ConfigurationWindowController.errorLabel()
+    private let faceError = ConfigurationWindowController.errorLabel()
+    private let editor = NSView()
+    private let emptyLabel = NSTextField(labelWithString: "Select a button to edit it.")
+    private let tabs = NSSegmentedControl(labels: ["Buttons", "Phone"], trackingMode: .selectOne, target: nil, action: nil)
+    private let buttonsTab = NSStackView()
+    private lazy var phoneTab = PhoneSettingsView(phones: phoneController)
+    private lazy var gridHeight = gridScrollView.heightAnchor.constraint(equalToConstant: ButtonGridView.height(for: 0))
+
+    private static let margin: CGFloat = 20
+    private static let width = ButtonGridView.width
+    private static let maxGridHeight: CGFloat = 288
+    private static let editorHeight: CGFloat = 274
+
+    init(configManager: ConfigurationManager, iconStore: IconStore, phoneController: PhoneController) {
         self.configManager = configManager
-        self.hotkeyManager = hotkeyManager
+        self.iconStore = iconStore
+        self.phoneController = phoneController
+        draft = SettingsDraft(configuration: configManager.getConfiguration(), iconStore: iconStore)
+        selectedID = draft.buttons.first?.id
+        (commandScrollView, commandView) = CommandTextView.make()
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: Self.width + Self.margin * 2, height: 700),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         window.title = "Hotkey Commander Settings"
-        window.center()
+        window.isReleasedWhenClosed = false
 
         super.init(window: window)
         window.delegate = self
 
-        // Load current configuration into temp storage
-        loadConfiguration()
         setupUI()
-        validateForm()
+        showSelection()
+        refresh()
+        fitWindow()
+        window.center()
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    private func loadConfiguration() {
-        let config = configManager.getConfiguration()
-        tempModifiers = config.activationModifiers
-        tempShortcuts = config.shortcuts
+    /// The panel stays away while a new Activation Hotkey is being pressed.
+    var isChangingHotkey: Bool {
+        return window?.attachedSheet is ChangeHotkeySheet
     }
+
+    // MARK: - Layout
 
     private func setupUI() {
         guard let contentView = window?.contentView else { return }
 
-        // Main container
-        let mainStack = NSStackView()
-        mainStack.orientation = .vertical
-        mainStack.spacing = 20
-        mainStack.translatesAutoresizingMaskIntoConstraints = false
-        mainStack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        contentView.addSubview(mainStack)
+        let sections = [
+            createHotkeySection(),
+            createSeparator(),
+            createGridSection(),
+            createSeparator(),
+            createEditorSection(),
+            createButtonsSection()
+        ]
+        sections.forEach(buttonsTab.addArrangedSubview)
+        buttonsTab.orientation = .vertical
+        buttonsTab.alignment = .leading
+        buttonsTab.spacing = 16
 
+        tabs.target = self
+        tabs.action = #selector(showSelectedTab)
+        tabs.selectedSegment = 0
+        phoneTab.onClose = { [weak self] in self?.close() }
+
+        for view in [tabs, buttonsTab, phoneTab] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(view)
+        }
         NSLayoutConstraint.activate([
-            mainStack.topAnchor.constraint(equalTo: contentView.topAnchor),
-            mainStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            mainStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            mainStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            tabs.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
+            tabs.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+
+            buttonsTab.topAnchor.constraint(equalTo: tabs.bottomAnchor, constant: 16),
+            buttonsTab.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Self.margin),
+            buttonsTab.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Self.margin),
+            buttonsTab.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Self.margin),
+            buttonsTab.widthAnchor.constraint(equalToConstant: Self.width),
+
+            // Both tabs have the size the Buttons tab needs, so the window keeps its size.
+            phoneTab.topAnchor.constraint(equalTo: buttonsTab.topAnchor),
+            phoneTab.leadingAnchor.constraint(equalTo: buttonsTab.leadingAnchor),
+            phoneTab.trailingAnchor.constraint(equalTo: buttonsTab.trailingAnchor),
+            phoneTab.bottomAnchor.constraint(equalTo: buttonsTab.bottomAnchor)
         ])
+        for section in sections {
+            section.widthAnchor.constraint(equalToConstant: Self.width).isActive = true
+        }
+        showSelectedTab()
+    }
 
-        // Activation Hotkey Section
-        let hotkeySection = createHotkeySection()
-        mainStack.addArrangedSubview(hotkeySection)
+    @objc private func showSelectedTab() {
+        let showsButtons = tabs.selectedSegment == 0
+        buttonsTab.isHidden = !showsButtons
+        phoneTab.isHidden = showsButtons
+        // Return saves the buttons only while they are in view.
+        saveButton.keyEquivalent = showsButtons ? "\r" : ""
+    }
 
-        // Separator
+    private func createSeparator() -> NSView {
         let separator = NSBox()
         separator.boxType = .separator
-        mainStack.addArrangedSubview(separator)
-
-        // Shortcuts Section
-        let shortcutsSection = createShortcutsSection()
-        mainStack.addArrangedSubview(shortcutsSection)
-
-        // Add New Section
-        let addSection = createAddSection()
-        mainStack.addArrangedSubview(addSection)
-
-        // Buttons Section
-        let buttonsSection = createButtonsSection()
-        mainStack.addArrangedSubview(buttonsSection)
-
-        // Set priorities
-        shortcutsSection.setContentHuggingPriority(.defaultLow, for: .vertical)
+        return separator
     }
 
     private func createHotkeySection() -> NSView {
-        let container = NSView()
-
-        let label = NSTextField(labelWithString: "Activation Hotkey:")
-        label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
-
-        modifierButton = NSButton(title: formatModifiers(tempModifiers), target: self, action: #selector(changeModifiers))
-        modifierButton.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(modifierButton)
-
-        let infoLabel = NSTextField(labelWithString: "(Click 'Change' and press the new key combination)")
-        infoLabel.font = NSFont.systemFont(ofSize: 11)
-        infoLabel.textColor = .secondaryLabelColor
-        infoLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(infoLabel)
-
+        modifierButton.target = self
+        modifierButton.action = #selector(changeModifiers)
+        modifierButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 150).isActive = true
         let changeButton = NSButton(title: "Change", target: self, action: #selector(changeModifiers))
-        changeButton.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(changeButton)
+
+        let row = NSStackView(views: [Self.sectionLabel("Activation Hotkey:"), modifierButton, changeButton])
+        row.spacing = 10
+
+        let stack = NSStackView(views: [row, Self.hintLabel("(Click 'Change' and press the new key combination)")])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        return stack
+    }
+
+    private func createGridSection() -> NSView {
+        grid.onSelect = { [weak self] id in self?.select(id) }
+        grid.onAdd = { [weak self] in self?.addButton() }
+        grid.onMove = { [weak self] id, index in
+            self?.draft.move(id: id, to: index)
+            self?.refresh()
+        }
+        grid.onDrop = { [weak self] id, file in self?.setIcon(of: id, from: file) }
+
+        gridScrollView.documentView = grid
+        gridScrollView.hasVerticalScroller = true
+        gridScrollView.scrollerKnobStyle = .light
+        gridScrollView.borderType = .noBorder
+        gridScrollView.backgroundColor = DeckColor.panel
+        gridScrollView.wantsLayer = true
+        gridScrollView.layer?.cornerRadius = 16
+        gridScrollView.layer?.masksToBounds = true
+
+        let stack = NSStackView(views: [
+            Self.sectionLabel("Buttons:"),
+            gridScrollView,
+            Self.hintLabel("Drop an image or an app on a button to set its icon. Drag a button to reorder.")
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        gridScrollView.widthAnchor.constraint(equalToConstant: Self.width).isActive = true
+        gridHeight.isActive = true
+        return stack
+    }
+
+    private func createEditorSection() -> NSView {
+        let container = NSView()
+        container.heightAnchor.constraint(equalToConstant: Self.editorHeight).isActive = true
+
+        emptyLabel.textColor = .secondaryLabelColor
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        editor.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(emptyLabel)
+        container.addSubview(editor)
+
+        let icon = createIconColumn()
+        let fields = createFieldsColumn()
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        fields.translatesAutoresizingMaskIntoConstraints = false
+        editor.addSubview(icon)
+        editor.addSubview(fields)
 
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor),
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            emptyLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
 
-            modifierButton.centerYAnchor.constraint(equalTo: label.centerYAnchor),
-            modifierButton.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 10),
-            modifierButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
+            editor.topAnchor.constraint(equalTo: container.topAnchor),
+            editor.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            editor.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            editor.bottomAnchor.constraint(equalTo: container.bottomAnchor),
 
-            changeButton.centerYAnchor.constraint(equalTo: label.centerYAnchor),
-            changeButton.leadingAnchor.constraint(equalTo: modifierButton.trailingAnchor, constant: 10),
+            icon.topAnchor.constraint(equalTo: editor.topAnchor),
+            icon.leadingAnchor.constraint(equalTo: editor.leadingAnchor),
+            icon.widthAnchor.constraint(equalToConstant: ButtonPreviewView.size.width),
 
-            infoLabel.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 5),
-            infoLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            infoLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            fields.topAnchor.constraint(equalTo: editor.topAnchor),
+            fields.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 24),
+            fields.trailingAnchor.constraint(equalTo: editor.trailingAnchor),
+            fields.bottomAnchor.constraint(equalTo: editor.bottomAnchor)
         ])
-
         return container
     }
 
-    private func createShortcutsSection() -> NSView {
-        let container = NSView()
+    private func createIconColumn() -> NSView {
+        preview.onDrop = { [weak self] file in
+            guard let self = self, let id = self.selectedID else { return }
+            self.setIcon(of: id, from: file)
+        }
+        preview.onClick = { [weak self] in self?.chooseIcon() }
 
-        let label = NSTextField(labelWithString: "Shortcuts:")
-        label.font = NSFont.systemFont(ofSize: 13, weight: .medium)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
+        let hint = NSTextField(wrappingLabelWithString: "Drop an image or an app here, or click to choose")
+        hint.font = .systemFont(ofSize: 12)
+        hint.textColor = .secondaryLabelColor
+        hint.alignment = .center
+        hint.isSelectable = false
+        hint.preferredMaxLayoutWidth = ButtonPreviewView.size.width
 
-        let scrollView = NSScrollView()
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.borderType = .bezelBorder
+        removeIconButton.target = self
+        removeIconButton.action = #selector(removeIcon)
+        removeIconButton.controlSize = .small
+        removeIconButton.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
 
-        tableView = NSTableView()
-        tableView.dataSource = self
-        tableView.delegate = self
-        tableView.headerView = NSTableHeaderView()
-        tableView.usesAlternatingRowBackgroundColors = true
-
-        let keyColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("key"))
-        keyColumn.title = "Key"
-        keyColumn.width = 80
-        tableView.addTableColumn(keyColumn)
-
-        let commandColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("command"))
-        commandColumn.title = "Command"
-        commandColumn.width = 350
-        tableView.addTableColumn(commandColumn)
-
-        let deleteColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("delete"))
-        deleteColumn.title = ""
-        deleteColumn.width = 50
-        tableView.addTableColumn(deleteColumn)
-
-        scrollView.documentView = tableView
-        container.addSubview(scrollView)
-
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor),
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-
-            scrollView.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 8),
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 200)
-        ])
-
-        return container
+        let stack = NSStackView(views: [preview, hint, removeIconButton])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 8
+        hint.widthAnchor.constraint(equalToConstant: ButtonPreviewView.size.width).isActive = true
+        return stack
     }
 
-    private func createAddSection() -> NSView {
-        let container = NSView()
-
-        let keyLabel = NSTextField(labelWithString: "Key:")
-        keyLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(keyLabel)
-
-        keyField = NSTextField()
-        keyField.placeholderString = "S"
-        keyField.translatesAutoresizingMaskIntoConstraints = false
+    private func createFieldsColumn() -> NSView {
+        nameField.delegate = self
         keyField.delegate = self
-        container.addSubview(keyField)
+        keyField.alignment = .center
+        keyField.cell?.allowsUndo = false
+        keyField.font = .systemFont(ofSize: 13, weight: .semibold)
+        commandView.delegate = self
+        commandView.onFocus = { [weak self] focused in self?.commandBox.isFocused = focused }
 
-        let commandLabel = NSTextField(labelWithString: "Command:")
-        commandLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(commandLabel)
+        let name = Self.column([NSTextField(labelWithString: "Name"), nameBox], spacing: 4)
+        let key = Self.column([NSTextField(labelWithString: "Key"), keyBox], spacing: 4)
+        keyBox.widthAnchor.constraint(equalToConstant: 64).isActive = true
+        let row = NSStackView(views: [name, key])
+        row.spacing = 12
+        row.alignment = .top
+        row.distribution = .fill
+        nameBox.widthAnchor.constraint(equalTo: name.widthAnchor).isActive = true
+        name.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        commandField = NSTextField()
-        commandField.placeholderString = "open -a \"Google Chrome\""
-        commandField.translatesAutoresizingMaskIntoConstraints = false
-        commandField.delegate = self
-        commandField.cell?.wraps = false
-        commandField.cell?.isScrollable = true
-        container.addSubview(commandField)
+        let command = Self.column([NSTextField(labelWithString: "Command"), commandBox], spacing: 4)
+        commandBox.widthAnchor.constraint(equalTo: command.widthAnchor).isActive = true
+        commandBox.heightAnchor.constraint(greaterThanOrEqualToConstant: 88).isActive = true
+        commandBox.setContentHuggingPriority(.defaultLow, for: .vertical)
 
-        addButton = NSButton(title: "+ Add New", target: self, action: #selector(addNewShortcut))
-        addButton.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(addButton)
-
-        NSLayoutConstraint.activate([
-            keyLabel.topAnchor.constraint(equalTo: container.topAnchor),
-            keyLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            keyLabel.widthAnchor.constraint(equalToConstant: 80),
-
-            keyField.centerYAnchor.constraint(equalTo: keyLabel.centerYAnchor),
-            keyField.leadingAnchor.constraint(equalTo: keyLabel.trailingAnchor, constant: 5),
-            keyField.widthAnchor.constraint(equalToConstant: 50),
-
-            commandLabel.centerYAnchor.constraint(equalTo: keyLabel.centerYAnchor),
-            commandLabel.leadingAnchor.constraint(equalTo: keyField.trailingAnchor, constant: 15),
-            commandLabel.widthAnchor.constraint(equalToConstant: 80),
-
-            commandField.centerYAnchor.constraint(equalTo: keyLabel.centerYAnchor),
-            commandField.leadingAnchor.constraint(equalTo: commandLabel.trailingAnchor, constant: 5),
-            commandField.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-
-            addButton.topAnchor.constraint(equalTo: keyLabel.bottomAnchor, constant: 10),
-            addButton.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            addButton.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        let deleteButton = NSButton(title: "Delete button", target: self, action: #selector(deleteButton))
+        deleteButton.attributedTitle = NSAttributedString(string: "Delete button", attributes: [
+            .foregroundColor: FieldBox.red,
+            .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)
         ])
 
-        return container
+        let stack = Self.column([row, keyError, command, commandError, faceError, deleteButton], spacing: 12)
+        for view in [row, command] {
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        return stack
     }
 
     private func createButtonsSection() -> NSView {
-        let container = NSView()
+        saveButton.target = self
+        saveButton.action = #selector(saveConfiguration)
+        let closeButton = NSButton(title: "Close", target: self, action: #selector(closeWindow))
 
-        closeButton = NSButton(title: "Close", target: self, action: #selector(closeWindow))
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(closeButton)
-
-        saveButton = NSButton(title: "Save", target: self, action: #selector(saveConfiguration))
-        saveButton.translatesAutoresizingMaskIntoConstraints = false
-        saveButton.keyEquivalent = "\r" // Enter key
-        container.addSubview(saveButton)
-
-        NSLayoutConstraint.activate([
-            saveButton.topAnchor.constraint(equalTo: container.topAnchor),
-            saveButton.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            saveButton.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            saveButton.widthAnchor.constraint(equalToConstant: 80),
-
-            closeButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
-            closeButton.trailingAnchor.constraint(equalTo: saveButton.leadingAnchor, constant: -10),
-            closeButton.widthAnchor.constraint(equalToConstant: 80)
-        ])
-
-        return container
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let stack = NSStackView(views: [spacer, closeButton, saveButton])
+        stack.spacing = 10
+        stack.distribution = .fill
+        closeButton.widthAnchor.constraint(equalToConstant: 84).isActive = true
+        saveButton.widthAnchor.constraint(equalToConstant: 84).isActive = true
+        return stack
     }
+
+    private static func column(_ views: [NSView], spacing: CGFloat) -> NSStackView {
+        let stack = NSStackView(views: views)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = spacing
+        return stack
+    }
+
+    private static func sectionLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        return label
+    }
+
+    private static func hintLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = .secondaryLabelColor
+        return label
+    }
+
+    private static func errorLabel() -> NSTextField {
+        let label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = FieldBox.red
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return label
+    }
+
+    // MARK: - Showing the draft
+
+    private func select(_ id: String?) {
+        guard id != selectedID else { return }
+        selectedID = id
+        showSelection()
+        refresh()
+    }
+
+    /// Fills the fields. Only on a change of button: while one is edited, the fields hold the truth.
+    private func showSelection() {
+        let button = draft.button(id: selectedID)
+        nameField.stringValue = button?.name ?? ""
+        keyField.stringValue = button?.key.uppercased() ?? ""
+        commandView.string = button?.command ?? ""
+        // Undo must not bring one button's text into another.
+        window?.undoManager?.removeAllActions()
+    }
+
+    private func refresh() {
+        modifierButton.title = ModifierNames.text(for: draft.modifiers)
+        saveButton.isEnabled = draft.isValid
+        refreshGrid()
+        refreshEditor()
+    }
+
+    private func refreshGrid() {
+        grid.tiles = draft.buttons.map { button in
+            ButtonGridView.Tile(
+                id: button.id,
+                face: button.face,
+                isSelected: button.id == selectedID,
+                isInvalid: !draft.problems(of: button).isEmpty,
+                toolTip: button.command
+            )
+        }
+
+        let height = min(Self.maxGridHeight, ButtonGridView.height(for: draft.buttons.count))
+        if height != gridHeight.constant {
+            gridHeight.constant = height
+            fitWindow()
+        }
+    }
+
+    /// The window grows and shrinks downwards.
+    private func fitWindow() {
+        guard let window = window, let contentView = window.contentView else { return }
+        let top = window.frame.maxY
+        contentView.layoutSubtreeIfNeeded()
+        window.setContentSize(contentView.fittingSize)
+        window.setFrameTopLeftPoint(NSPoint(x: window.frame.minX, y: top))
+    }
+
+    private func refreshEditor() {
+        let button = draft.button(id: selectedID)
+        editor.isHidden = button == nil
+        emptyLabel.isHidden = button != nil
+        guard let button = button else { return }
+
+        preview.face = button.face
+        removeIconButton.isHidden = button.icon.image == nil
+
+        let problems = draft.problems(of: button)
+        show(problems.key, in: keyError)
+        show(problems.command, in: commandError)
+        show(problems.face, in: faceError)
+        keyBox.isInvalid = problems.key != nil
+        commandBox.isInvalid = problems.command != nil
+    }
+
+    private func show(_ message: String?, in label: NSTextField) {
+        label.stringValue = message ?? ""
+        label.isHidden = message == nil
+    }
+
+    private func edit(_ change: (inout SettingsDraft.Button) -> Void) {
+        guard let id = selectedID else { return }
+        draft.update(id: id, change)
+        refresh()
+    }
+
+    // MARK: - Actions
 
     @objc private func changeModifiers() {
-        let alert = NSAlert()
-        alert.messageText = "Press New Hotkey Combination"
-        alert.informativeText = "Press the modifier keys you want to use (Control, Shift, Command, Option)"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Cancel")
-
-        let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
-        inputField.placeholderString = "Press modifiers..."
-        inputField.isEditable = false
-        alert.accessoryView = inputField
-
-        // Capture key events
-        var capturedModifiers: [String] = []
-        let monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            capturedModifiers = []
-
-            if flags.contains(.control) { capturedModifiers.append("control") }
-            if flags.contains(.shift) { capturedModifiers.append("shift") }
-            if flags.contains(.command) { capturedModifiers.append("command") }
-            if flags.contains(.option) { capturedModifiers.append("option") }
-
-            inputField.stringValue = self.formatModifiers(capturedModifiers)
-            return event
-        }
-
-        let response = alert.runModal()
-        if let monitor = monitor {
-            NSEvent.removeMonitor(monitor)
-        }
-
-        if response == .alertFirstButtonReturn { // Cancel
-            return
-        }
-
-        if !capturedModifiers.isEmpty {
-            tempModifiers = capturedModifiers
-            modifierButton.title = formatModifiers(tempModifiers)
-            validateForm()
+        guard let window = window else { return }
+        ChangeHotkeySheet().begin(on: window) { [weak self] modifiers in
+            guard let self = self, let modifiers = modifiers else { return }
+            self.draft.modifiers = modifiers
+            self.refresh()
         }
     }
 
-    @objc private func addNewShortcut() {
-        let key = keyField.stringValue.trimmingCharacters(in: .whitespaces)
-        let command = commandField.stringValue.trimmingCharacters(in: .whitespaces)
+    private func addButton(icon: SettingsDraft.Button.Icon = .none) {
+        select(draft.add(icon: icon))
+        // "+" stays in view, ready for the next one.
+        grid.scrollToVisible(NSRect(x: 0, y: grid.bounds.maxY - 1, width: 1, height: 1))
+    }
 
-        guard configManager.isValidKey(key) && configManager.isValidCommand(command) else {
+    @objc private func deleteButton() {
+        guard let id = selectedID else { return }
+        draft.remove(id: id)
+        select(nil)
+    }
+
+    @objc private func removeIcon() {
+        edit { $0.icon = .none }
+    }
+
+    private func chooseIcon() {
+        guard let window = window, let id = selectedID else { return }
+        let openPanel = NSOpenPanel()
+        openPanel.allowedContentTypes = IconStore.fileTypes
+        openPanel.allowsMultipleSelection = false
+        openPanel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let file = openPanel.url else { return }
+            self?.setIcon(of: id, from: file)
+        }
+    }
+
+    /// nil adds a new button with the icon.
+    private func setIcon(of id: String?, from file: URL) {
+        let icon: SettingsDraft.Button.Icon
+        do {
+            let png = try IconStore.squarePNG(from: file)
+            icon = .new(png: png, image: try IconStore.decode(png))
+        } catch {
+            showAlert("Couldn't read \"\(file.lastPathComponent)\" as an image.", error)
             return
         }
-
-        // Check for duplicate keys
-        if tempShortcuts.contains(where: { $0.key.lowercased() == key.lowercased() }) {
-            let alert = NSAlert()
-            alert.messageText = "Duplicate Key"
-            alert.informativeText = "A shortcut with this key already exists."
-            alert.alertStyle = .warning
-            alert.runModal()
-            return
+        if let id = id {
+            draft.update(id: id) { $0.icon = icon }
+            refresh()
+        } else {
+            addButton(icon: icon)
         }
-
-        tempShortcuts.append(ShortcutConfig(key: key, command: command))
-        tableView.reloadData()
-
-        keyField.stringValue = ""
-        commandField.stringValue = ""
-        validateForm()
     }
 
     @objc private func saveConfiguration() {
-        configManager.updateConfiguration(activationModifiers: tempModifiers, shortcuts: tempShortcuts)
-        hotkeyManager.reloadConfiguration()
+        guard draft.isValid else { return }
+        do {
+            try draft.save(to: configManager, iconStore: iconStore)
+        } catch {
+            showAlert("Couldn't save the icon.", error)
+            return
+        }
+        onSave?()
         close()
+    }
+
+    private func showAlert(_ message: String, _ error: Error) {
+        guard let window = window else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.informativeText = error.localizedDescription
+        alert.beginSheetModal(for: window)
     }
 
     @objc private func closeWindow() {
         close()
     }
 
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
+        return client as? NSTextField === keyField ? keyEditor : nil
+    }
+
     func windowWillClose(_ notification: Notification) {
         onClose?()
-    }
-
-    private func formatModifiers(_ modifiers: [String]) -> String {
-        let formatted = modifiers.map { modifier -> String in
-            switch modifier.lowercased() {
-            case "control": return "Control"
-            case "shift": return "Shift"
-            case "command": return "Command"
-            case "option": return "Option"
-            default: return modifier.capitalized
-            }
-        }
-        return formatted.joined(separator: " + ")
-    }
-
-    private func validateForm() {
-        let modifiersValid = configManager.isValidModifiers(tempModifiers)
-        let shortcutsValid = tempShortcuts.allSatisfy { shortcut in
-            configManager.isValidKey(shortcut.key) && configManager.isValidCommand(shortcut.command)
-        }
-
-        saveButton.isEnabled = modifiersValid && shortcutsValid
-    }
-
-    // MARK: - NSTableViewDataSource
-
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        return tempShortcuts.count
-    }
-
-    // MARK: - NSTableViewDelegate
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard row < tempShortcuts.count else { return nil }
-
-        let shortcut = tempShortcuts[row]
-        let identifier = tableColumn?.identifier
-
-        if identifier == NSUserInterfaceItemIdentifier("key") {
-            let cellView = NSTableCellView()
-            let textField = NSTextField(labelWithString: shortcut.key.uppercased())
-            textField.translatesAutoresizingMaskIntoConstraints = false
-            cellView.addSubview(textField)
-            NSLayoutConstraint.activate([
-                textField.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 5),
-                textField.centerYAnchor.constraint(equalTo: cellView.centerYAnchor)
-            ])
-            return cellView
-        } else if identifier == NSUserInterfaceItemIdentifier("command") {
-            let cellView = NSTableCellView()
-            let textField = NSTextField(labelWithString: shortcut.command)
-            textField.translatesAutoresizingMaskIntoConstraints = false
-            cellView.addSubview(textField)
-            NSLayoutConstraint.activate([
-                textField.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 5),
-                textField.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
-                textField.trailingAnchor.constraint(lessThanOrEqualTo: cellView.trailingAnchor, constant: -5)
-            ])
-            return cellView
-        } else if identifier == NSUserInterfaceItemIdentifier("delete") {
-            let cellView = NSTableCellView()
-            let button = NSButton(title: "×", target: self, action: #selector(deleteShortcut(_:)))
-            button.tag = row
-            button.isBordered = false
-            button.font = NSFont.systemFont(ofSize: 16)
-            button.translatesAutoresizingMaskIntoConstraints = false
-            cellView.addSubview(button)
-            NSLayoutConstraint.activate([
-                button.centerXAnchor.constraint(equalTo: cellView.centerXAnchor),
-                button.centerYAnchor.constraint(equalTo: cellView.centerYAnchor)
-            ])
-            return cellView
-        }
-
-        return nil
-    }
-
-    @objc private func deleteShortcut(_ sender: NSButton) {
-        let row = sender.tag
-        guard row < tempShortcuts.count else { return }
-
-        tempShortcuts.remove(at: row)
-        tableView.reloadData()
-        validateForm()
     }
 }
 
@@ -439,6 +509,38 @@ class ConfigurationWindowController: NSWindowController, NSWindowDelegate, NSTab
 
 extension ConfigurationWindowController: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
-        validateForm()
+        guard let field = obj.object as? NSTextField else { return }
+        // Text an input method is still composing.
+        if let textView = field.currentEditor() as? NSTextView, textView.hasMarkedText() { return }
+
+        if field === nameField {
+            let name = nameField.stringValue.components(separatedBy: .newlines).joined(separator: " ")
+            edit { $0.name = name }
+        } else if field === keyField {
+            keyTyped()
+        }
+    }
+
+    /// One key at most: a new one takes the place of the old. One that cannot be a hotkey is taken too,
+    /// and marked, because an input method can turn W into Ư: refusing it would look like a broken field.
+    private func keyTyped() {
+        guard let button = draft.button(id: selectedID) else { return }
+        var typed = keyField.stringValue.components(separatedBy: .newlines).joined().uppercased()
+        if typed.count > 1, let range = typed.range(of: button.key.uppercased()) {
+            typed.removeSubrange(range)
+        }
+        let key = typed.last.map(String.init) ?? ""
+        keyField.stringValue = key
+        edit { $0.key = key }
+    }
+}
+
+// MARK: - NSTextViewDelegate
+
+extension ConfigurationWindowController: NSTextViewDelegate {
+    func textDidChange(_ notification: Notification) {
+        guard notification.object as? NSTextView === commandView else { return }
+        let command = commandView.string
+        edit { $0.command = command }
     }
 }

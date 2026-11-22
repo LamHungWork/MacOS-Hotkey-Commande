@@ -1,13 +1,16 @@
 import Cocoa
 import Carbon
 
+/// The Activation Hotkey plus a button's key.
 class HotkeyManager {
-    private var configManager: ConfigurationManager
-    private var registeredHotkeys: [UInt32: (EventHotKeyRef, ShortcutConfig)] = [:]
+    /// Called with the id of the button whose key was pressed.
+    var onHotkey: ((String) -> Void)?
+
+    private static let signature: OSType = 0x484B434D // "HKCM"
+
+    private let configManager: ConfigurationManager
+    private var registeredHotkeys: [UInt32: (ref: EventHotKeyRef, shortcutID: String)] = [:]
     private var eventHandler: EventHandlerRef?
-    private var activeProcess: Process?
-    private var currentlyPressedKey: Int?
-    private var keyUpMonitor: Any?
 
     init(configManager: ConfigurationManager) {
         self.configManager = configManager
@@ -23,9 +26,6 @@ class HotkeyManager {
 
         // Register all hotkeys from config
         registerAllHotkeys()
-
-        // Setup key up monitor for toggle mode (key release)
-        setupKeyUpMonitor()
     }
 
     func stopListening() {
@@ -37,15 +37,11 @@ class HotkeyManager {
             RemoveEventHandler(handler)
             eventHandler = nil
         }
+    }
 
-        // Remove key up monitor
-        if let monitor = keyUpMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyUpMonitor = nil
-        }
-
-        // Stop any active command
-        stopCurrentCommand()
+    func reloadConfiguration() {
+        stopListening()
+        startListening()
     }
 
     private func setupEventHandler() {
@@ -57,7 +53,7 @@ class HotkeyManager {
         InstallEventHandler(
             GetApplicationEventTarget(),
             { (_, event, userData) -> OSStatus in
-                guard let userData = userData else { return noErr }
+                guard let userData = userData else { return OSStatus(eventNotHandledErr) }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
 
                 var hotkeyID = EventHotKeyID()
@@ -71,10 +67,11 @@ class HotkeyManager {
                     &hotkeyID
                 )
 
-                if error == noErr {
-                    manager.handleHotkeyPressed(id: hotkeyID.id)
+                guard error == noErr, hotkeyID.signature == HotkeyManager.signature else {
+                    return OSStatus(eventNotHandledErr)
                 }
 
+                manager.handleHotkeyPressed(id: hotkeyID.id)
                 return noErr
             },
             1,
@@ -84,28 +81,10 @@ class HotkeyManager {
         )
     }
 
-    private func setupKeyUpMonitor() {
-        // Monitor key up events globally for toggle mode
-        keyUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyUp) { [weak self] event in
-            guard let self = self else { return }
-
-            let keyCode = Int(event.keyCode)
-
-            // If this is the key we're tracking, stop the command
-            if self.currentlyPressedKey == keyCode {
-                self.stopCurrentCommand()
-                self.currentlyPressedKey = nil
-            }
-        }
-    }
-
     private func registerAllHotkeys() {
-        let activationModifiers = configManager.getActivationModifiers()
-        let shortcuts = configManager.getShortcuts()
-
         // Convert activation modifiers to Carbon format
         var carbonModifiers = UInt32(0)
-        for modifier in activationModifiers {
+        for modifier in configManager.getActivationModifiers() {
             switch modifier.lowercased() {
             case "control":
                 carbonModifiers |= UInt32(controlKey)
@@ -120,101 +99,48 @@ class HotkeyManager {
             }
         }
 
-        // Register each shortcut
-        for (index, shortcut) in shortcuts.enumerated() {
-            guard let keyCode = characterToKeyCode(shortcut.key) else {
+        // Register each shortcut that has a key
+        for (index, shortcut) in configManager.getShortcuts().enumerated() {
+            guard let keyCode = Self.keyCode(for: shortcut.key) else {
                 continue
             }
 
-            let hotkeyID = UInt32(index + 1)
-            registerHotkey(keyCode: keyCode, modifiers: carbonModifiers, id: hotkeyID, shortcut: shortcut)
+            registerHotkey(keyCode: keyCode, modifiers: carbonModifiers, id: UInt32(index + 1), shortcutID: shortcut.id)
         }
     }
 
-    @discardableResult
-    private func registerHotkey(keyCode: Int, modifiers: UInt32, id: UInt32, shortcut: ShortcutConfig) -> Bool {
-        let signature = "HKCM" as CFString // HotKeyCommander
-        let sigInt = UTGetOSTypeFromString(signature)
-
-        let hotKeyID = EventHotKeyID(signature: sigInt, id: id)
+    private func registerHotkey(keyCode: Int, modifiers: UInt32, id: UInt32, shortcutID: String) {
         var hotKeyRef: EventHotKeyRef?
 
         let status = RegisterEventHotKey(
             UInt32(keyCode),
             modifiers,
-            hotKeyID,
+            EventHotKeyID(signature: Self.signature, id: id),
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
 
         if status == noErr, let hotKeyRef = hotKeyRef {
-            registeredHotkeys[id] = (hotKeyRef, shortcut)
-            return true
+            registeredHotkeys[id] = (hotKeyRef, shortcutID)
         }
-
-        return false
     }
 
     private func unregisterAllHotkeys() {
-        for (_, (hotKeyRef, _)) in registeredHotkeys {
-            UnregisterEventHotKey(hotKeyRef)
+        for (_, hotkey) in registeredHotkeys {
+            UnregisterEventHotKey(hotkey.ref)
         }
 
         registeredHotkeys.removeAll()
     }
 
     private func handleHotkeyPressed(id: UInt32) {
-        guard let (_, shortcut) = registeredHotkeys[id] else {
-            return
-        }
-
-        // Track which key is pressed for toggle mode
-        if let keyCode = characterToKeyCode(shortcut.key) {
-            currentlyPressedKey = keyCode
-        }
-
-        // Execute the command
-        executeCommand(shortcut.command)
+        guard let hotkey = registeredHotkeys[id] else { return }
+        onHotkey?(hotkey.shortcutID)
     }
 
-    private func executeCommand(_ command: String) {
-        stopCurrentCommand() // Stop any existing command
-
-        let process = Process()
-        process.launchPath = "/bin/zsh"
-        process.arguments = ["-c", command]
-
-        // Setup pipes for output
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-            activeProcess = process
-        } catch {
-            // Failed to execute command
-        }
-    }
-
-    private func stopCurrentCommand() {
-        guard let process = activeProcess, process.isRunning else { return }
-
-        process.terminate()
-
-        // Give it a moment to terminate gracefully
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if process.isRunning {
-                process.interrupt()
-            }
-        }
-
-        activeProcess = nil
-    }
-
-    private func characterToKeyCode(_ character: String) -> Int? {
+    /// nil for a character that cannot be a hotkey.
+    static func keyCode(for character: String) -> Int? {
         // Map characters to keycodes
         let keyMap: [String: Int] = [
             "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
@@ -226,10 +152,5 @@ class HotkeyManager {
         ]
 
         return keyMap[character.lowercased()]
-    }
-
-    func reloadConfiguration() {
-        stopListening()
-        startListening()
     }
 }

@@ -12,6 +12,24 @@
 		AA0000010000000000000003 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000003 /* HotkeyManager.swift */; };
 		AA0000010000000000000004 /* ConfigurationWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000004 /* ConfigurationWindowController.swift */; };
 		AA0000010000000000000005 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000005 /* LaunchAtLoginManager.swift */; };
+		AA0000010000000000000006 /* AppPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000006 /* AppPaths.swift */; };
+		AA0000010000000000000007 /* LoginShellPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000007 /* LoginShellPath.swift */; };
+		AA0000010000000000000008 /* ScriptRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000008 /* ScriptRunner.swift */; };
+		AA0000010000000000000009 /* ActivationMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000009 /* ActivationMonitor.swift */; };
+		AA0000010000000000000010 /* IconStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000010 /* IconStore.swift */; };
+		AA0000010000000000000011 /* ButtonFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000011 /* ButtonFace.swift */; };
+		AA0000010000000000000012 /* DeckPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000012 /* DeckPanelController.swift */; };
+		AA0000010000000000000013 /* SettingsDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000013 /* SettingsDraft.swift */; };
+		AA0000010000000000000014 /* ButtonGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000014 /* ButtonGridView.swift */; };
+		AA0000010000000000000015 /* FieldBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000015 /* FieldBox.swift */; };
+		AA0000010000000000000016 /* ModifierNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000016 /* ModifierNames.swift */; };
+		AA0000010000000000000017 /* ChangeHotkeySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000017 /* ChangeHotkeySheet.swift */; };
+		AA0000010000000000000018 /* PhoneServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000018 /* PhoneServer.swift */; };
+		AA0000010000000000000019 /* PhoneConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000019 /* PhoneConnection.swift */; };
+		AA0000010000000000000020 /* PhonePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000020 /* PhonePage.swift */; };
+		AA0000010000000000000021 /* PhoneController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000021 /* PhoneController.swift */; };
+		AA0000010000000000000022 /* PhoneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000022 /* PhoneSettingsView.swift */; };
+		AA0000010000000000000023 /* AddDeviceSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000020000000000000023 /* AddDeviceSheet.swift */; };
 		b1113f17bfae465188656fd5 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 690193efcc23411db958e24e /* AppIcon.icns */; };
 		363b5ddf757b401f86474a1c /* menubar_icon.png in Resources */ = {isa = PBXBuildFile; fileRef = ccd083c0cb504260abb03303 /* menubar_icon.png */; };
 		b8cd70bcf88642b0baf32b9d /* menubar_icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = d974b90a1a3e441d9f76c103 /* menubar_icon@2x.png */; };
@@ -24,6 +42,24 @@
 		AA0000020000000000000003 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
 		AA0000020000000000000004 /* ConfigurationWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationWindowController.swift; sourceTree = "<group>"; };
 		AA0000020000000000000005 /* LaunchAtLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginManager.swift; sourceTree = "<group>"; };
+		AA0000020000000000000006 /* AppPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPaths.swift; sourceTree = "<group>"; };
+		AA0000020000000000000007 /* LoginShellPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginShellPath.swift; sourceTree = "<group>"; };
+		AA0000020000000000000008 /* ScriptRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptRunner.swift; sourceTree = "<group>"; };
+		AA0000020000000000000009 /* ActivationMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivationMonitor.swift; sourceTree = "<group>"; };
+		AA0000020000000000000010 /* IconStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconStore.swift; sourceTree = "<group>"; };
+		AA0000020000000000000011 /* ButtonFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonFace.swift; sourceTree = "<group>"; };
+		AA0000020000000000000012 /* DeckPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckPanelController.swift; sourceTree = "<group>"; };
+		AA0000020000000000000013 /* SettingsDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDraft.swift; sourceTree = "<group>"; };
+		AA0000020000000000000014 /* ButtonGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonGridView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000015 /* FieldBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldBox.swift; sourceTree = "<group>"; };
+		AA0000020000000000000016 /* ModifierNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModifierNames.swift; sourceTree = "<group>"; };
+		AA0000020000000000000017 /* ChangeHotkeySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangeHotkeySheet.swift; sourceTree = "<group>"; };
+		AA0000020000000000000018 /* PhoneServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneServer.swift; sourceTree = "<group>"; };
+		AA0000020000000000000019 /* PhoneConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneConnection.swift; sourceTree = "<group>"; };
+		AA0000020000000000000020 /* PhonePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhonePage.swift; sourceTree = "<group>"; };
+		AA0000020000000000000021 /* PhoneController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneController.swift; sourceTree = "<group>"; };
+		AA0000020000000000000022 /* PhoneSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSettingsView.swift; sourceTree = "<group>"; };
+		AA0000020000000000000023 /* AddDeviceSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddDeviceSheet.swift; sourceTree = "<group>"; };
 		AA0000030000000000000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA0000030000000000000002 /* HotkeyCommander.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HotkeyCommander.entitlements; sourceTree = "<group>"; };
 		690193efcc23411db958e24e /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
@@ -76,6 +112,24 @@
 				AA0000020000000000000003 /* HotkeyManager.swift */,
 				AA0000020000000000000004 /* ConfigurationWindowController.swift */,
 				AA0000020000000000000005 /* LaunchAtLoginManager.swift */,
+				AA0000020000000000000006 /* AppPaths.swift */,
+				AA0000020000000000000007 /* LoginShellPath.swift */,
+				AA0000020000000000000008 /* ScriptRunner.swift */,
+				AA0000020000000000000009 /* ActivationMonitor.swift */,
+				AA0000020000000000000010 /* IconStore.swift */,
+				AA0000020000000000000011 /* ButtonFace.swift */,
+				AA0000020000000000000012 /* DeckPanelController.swift */,
+				AA0000020000000000000013 /* SettingsDraft.swift */,
+				AA0000020000000000000014 /* ButtonGridView.swift */,
+				AA0000020000000000000015 /* FieldBox.swift */,
+				AA0000020000000000000016 /* ModifierNames.swift */,
+				AA0000020000000000000017 /* ChangeHotkeySheet.swift */,
+				AA0000020000000000000018 /* PhoneServer.swift */,
+				AA0000020000000000000019 /* PhoneConnection.swift */,
+				AA0000020000000000000020 /* PhonePage.swift */,
+				AA0000020000000000000021 /* PhoneController.swift */,
+				AA0000020000000000000022 /* PhoneSettingsView.swift */,
+				AA0000020000000000000023 /* AddDeviceSheet.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -175,6 +229,24 @@
 				AA0000010000000000000003 /* HotkeyManager.swift in Sources */,
 				AA0000010000000000000004 /* ConfigurationWindowController.swift in Sources */,
 				AA0000010000000000000005 /* LaunchAtLoginManager.swift in Sources */,
+				AA0000010000000000000006 /* AppPaths.swift in Sources */,
+				AA0000010000000000000007 /* LoginShellPath.swift in Sources */,
+				AA0000010000000000000008 /* ScriptRunner.swift in Sources */,
+				AA0000010000000000000009 /* ActivationMonitor.swift in Sources */,
+				AA0000010000000000000010 /* IconStore.swift in Sources */,
+				AA0000010000000000000011 /* ButtonFace.swift in Sources */,
+				AA0000010000000000000012 /* DeckPanelController.swift in Sources */,
+				AA0000010000000000000013 /* SettingsDraft.swift in Sources */,
+				AA0000010000000000000014 /* ButtonGridView.swift in Sources */,
+				AA0000010000000000000015 /* FieldBox.swift in Sources */,
+				AA0000010000000000000016 /* ModifierNames.swift in Sources */,
+				AA0000010000000000000017 /* ChangeHotkeySheet.swift in Sources */,
+				AA0000010000000000000018 /* PhoneServer.swift in Sources */,
+				AA0000010000000000000019 /* PhoneConnection.swift in Sources */,
+				AA0000010000000000000020 /* PhonePage.swift in Sources */,
+				AA0000010000000000000021 /* PhoneController.swift in Sources */,
+				AA0000010000000000000022 /* PhoneSettingsView.swift in Sources */,
+				AA0000010000000000000023 /* AddDeviceSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
