@@ -77,7 +77,9 @@ private final class DeckPanel: NSPanel {
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
         level = .statusBar
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // Not .canJoinAllSpaces: when any app leaves full screen, macOS takes such a window off every
+        // other full-screen Space and never puts it back.
+        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle]
         animationBehavior = .none
         worksWhenModal = true
         allowsToolTipsWhenApplicationIsInactive = true
